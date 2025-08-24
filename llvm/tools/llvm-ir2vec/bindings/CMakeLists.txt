@@ -1,0 +1,2 @@
+add_subdirectory(IR2Vec)
+add_subdirectory(MIR2Vec)
