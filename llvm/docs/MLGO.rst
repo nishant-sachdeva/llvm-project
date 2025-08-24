@@ -517,8 +517,9 @@ embeddings can be computed and accessed via an ``ir2vec::Embedder`` instance.
    .. note::
 
     The validity of ``Embedder`` instance (and the embeddings it generates) is
-    tied to the function it is associated with remains unchanged. If the function
-    is modified, the embeddings may become stale and should be recomputed accordingly.
+    tied to the function it is associated with and does not remain unchanged.
+    If the function is modified, the embeddings may become stale and should be
+    recomputed accordingly.
 
 4. **Working with Embeddings:**
    Embeddings are represented as ``std::vector<double>``. These

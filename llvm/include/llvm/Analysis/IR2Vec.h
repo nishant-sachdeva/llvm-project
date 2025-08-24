@@ -11,6 +11,7 @@
 /// the core ir2vec::Embedder interface for generating IR embeddings,
 /// and related utilities like the IR2VecPrinterPass.
 ///
+/// TODO: The sentence grammar seems off. Check this out.
 /// Program Embeddings are typically or derived-from a learned
 /// representation of the program. Such embeddings are used to represent the
 /// programs as input to machine learning algorithms. IR2Vec represents the
@@ -615,7 +616,7 @@ class IR2VecVocabAnalysis : public AnalysisInfoMixin<IR2VecVocabAnalysis> {
   using VocabMap = std::map<std::string, ir2vec::Embedding>;
   std::optional<ir2vec::VocabStorage> Vocab;
 
-  Error readVocabulary(VocabMap &OpcVocab, VocabMap &TypeVocab,
+  Error readVocabulary(StringRef EffectivePath, VocabMap &OpcVocab, VocabMap &TypeVocab,
                        VocabMap &ArgVocab);
   void generateVocabStorage(VocabMap &OpcVocab, VocabMap &TypeVocab,
                             VocabMap &ArgVocab);

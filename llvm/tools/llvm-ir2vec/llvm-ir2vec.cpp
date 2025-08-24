@@ -33,6 +33,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "IR2VecTool.h"
 #include "llvm/Analysis/IR2Vec.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -49,8 +50,8 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-
 #define DEBUG_TYPE "ir2vec"
+
 
 namespace llvm {
 namespace ir2vec {
@@ -83,194 +84,16 @@ static cl::opt<std::string>
                  cl::value_desc("name"), cl::Optional, cl::init(""),
                  cl::sub(EmbeddingsSubCmd), cl::cat(ir2vec::IR2VecCategory));
 
-enum EmbeddingLevel {
-  InstructionLevel, // Generate instruction-level embeddings
-  BasicBlockLevel,  // Generate basic block-level embeddings
-  FunctionLevel     // Generate function-level embeddings
-};
-
-static cl::opt<EmbeddingLevel>
+cl::opt<EmbeddingLevel>
     Level("level", cl::desc("Embedding generation level:"),
-          cl::values(clEnumValN(InstructionLevel, "inst",
+          cl::values(clEnumValN(EmbeddingLevel::InstructionLevel, "inst",
                                 "Generate instruction-level embeddings"),
-                     clEnumValN(BasicBlockLevel, "bb",
+                     clEnumValN(EmbeddingLevel::BasicBlockLevel, "bb",
                                 "Generate basic block-level embeddings"),
-                     clEnumValN(FunctionLevel, "func",
+                     clEnumValN(EmbeddingLevel::FunctionLevel, "func",
                                 "Generate function-level embeddings")),
           cl::init(FunctionLevel), cl::sub(EmbeddingsSubCmd),
           cl::cat(ir2vec::IR2VecCategory));
-
-namespace {
-
-/// Relation types for triplet generation
-enum RelationType {
-  TypeRelation = 0, ///< Instruction to type relationship
-  NextRelation = 1, ///< Sequential instruction relationship
-  ArgRelation = 2   ///< Instruction to operand relationship (ArgRelation + N)
-};
-
-/// Helper class for collecting IR triplets and generating embeddings
-class IR2VecTool {
-private:
-  Module &M;
-  ModuleAnalysisManager MAM;
-  const Vocabulary *Vocab = nullptr;
-
-public:
-  explicit IR2VecTool(Module &M) : M(M) {}
-
-  /// Initialize the IR2Vec vocabulary analysis
-  bool initializeVocabulary() {
-    // Register and run the IR2Vec vocabulary analysis
-    // The vocabulary file path is specified via --ir2vec-vocab-path global
-    // option
-    MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
-    MAM.registerPass([&] { return IR2VecVocabAnalysis(); });
-    // This will throw an error if vocab is not found or invalid
-    Vocab = &MAM.getResult<IR2VecVocabAnalysis>(M);
-    return Vocab->isValid();
-  }
-
-  /// Generate triplets for the module
-  /// Output format: MAX_RELATION=N header followed by relationships
-  void generateTriplets(raw_ostream &OS) const {
-    unsigned MaxRelation = NextRelation; // Track maximum relation ID
-    std::string Relationships;
-    raw_string_ostream RelOS(Relationships);
-
-    for (const Function &F : M) {
-      unsigned FuncMaxRelation = generateTriplets(F, RelOS);
-      MaxRelation = std::max(MaxRelation, FuncMaxRelation);
-    }
-
-    RelOS.flush();
-
-    // Write metadata header followed by relationships
-    OS << "MAX_RELATION=" << MaxRelation << '\n';
-    OS << Relationships;
-  }
-
-  /// Generate triplets for a single function
-  /// Returns the maximum relation ID used in this function
-  unsigned generateTriplets(const Function &F, raw_ostream &OS) const {
-    if (F.isDeclaration())
-      return 0;
-
-    unsigned MaxRelation = 1;
-    unsigned PrevOpcode = 0;
-    bool HasPrevOpcode = false;
-
-    for (const BasicBlock &BB : F) {
-      for (const auto &I : BB.instructionsWithoutDebug()) {
-        unsigned Opcode = Vocabulary::getIndex(I.getOpcode());
-        unsigned TypeID = Vocabulary::getIndex(I.getType()->getTypeID());
-
-        // Add "Next" relationship with previous instruction
-        if (HasPrevOpcode) {
-          OS << PrevOpcode << '\t' << Opcode << '\t' << NextRelation << '\n';
-          LLVM_DEBUG(dbgs()
-                     << Vocabulary::getVocabKeyForOpcode(PrevOpcode + 1) << '\t'
-                     << Vocabulary::getVocabKeyForOpcode(Opcode + 1) << '\t'
-                     << "Next\n");
-        }
-
-        // Add "Type" relationship
-        OS << Opcode << '\t' << TypeID << '\t' << TypeRelation << '\n';
-        LLVM_DEBUG(
-            dbgs() << Vocabulary::getVocabKeyForOpcode(Opcode + 1) << '\t'
-                   << Vocabulary::getVocabKeyForTypeID(I.getType()->getTypeID())
-                   << '\t' << "Type\n");
-
-        // Add "Arg" relationships
-        unsigned ArgIndex = 0;
-        for (const Use &U : I.operands()) {
-          unsigned OperandID = Vocabulary::getIndex(*U.get());
-          unsigned RelationID = ArgRelation + ArgIndex;
-          OS << Opcode << '\t' << OperandID << '\t' << RelationID << '\n';
-
-          LLVM_DEBUG({
-            StringRef OperandStr = Vocabulary::getVocabKeyForOperandKind(
-                Vocabulary::getOperandKind(U.get()));
-            dbgs() << Vocabulary::getVocabKeyForOpcode(Opcode + 1) << '\t'
-                   << OperandStr << '\t' << "Arg" << ArgIndex << '\n';
-          });
-
-          ++ArgIndex;
-        }
-        // Only update MaxRelation if there were operands
-        if (ArgIndex > 0) {
-          MaxRelation = std::max(MaxRelation, ArgRelation + ArgIndex - 1);
-        }
-        PrevOpcode = Opcode;
-        HasPrevOpcode = true;
-      }
-    }
-
-    return MaxRelation;
-  }
-
-  /// Dump entity ID to string mappings
-  static void generateEntityMappings(raw_ostream &OS) {
-    auto EntityLen = Vocabulary::getCanonicalSize();
-    OS << EntityLen << "\n";
-    for (unsigned EntityID = 0; EntityID < EntityLen; ++EntityID)
-      OS << Vocabulary::getStringKey(EntityID) << '\t' << EntityID << '\n';
-  }
-
-  /// Generate embeddings for the entire module
-  void generateEmbeddings(raw_ostream &OS) const {
-    if (!Vocab->isValid()) {
-      OS << "Error: Vocabulary is not valid. IR2VecTool not initialized.\n";
-      return;
-    }
-
-    for (const Function &F : M)
-      generateEmbeddings(F, OS);
-  }
-
-  /// Generate embeddings for a single function
-  void generateEmbeddings(const Function &F, raw_ostream &OS) const {
-    if (F.isDeclaration()) {
-      OS << "Function " << F.getName() << " is a declaration, skipping.\n";
-      return;
-    }
-
-    // Create embedder for this function
-    assert(Vocab->isValid() && "Vocabulary is not valid");
-    auto Emb = Embedder::create(IR2VecEmbeddingKind, F, *Vocab);
-    if (!Emb) {
-      OS << "Error: Failed to create embedder for function " << F.getName()
-         << "\n";
-      return;
-    }
-
-    OS << "Function: " << F.getName() << "\n";
-
-    // Generate embeddings based on the specified level
-    switch (Level) {
-    case FunctionLevel: {
-      Emb->getFunctionVector().print(OS);
-      break;
-    }
-    case BasicBlockLevel: {
-      for (const BasicBlock &BB : F) {
-        OS << BB.getName() << ":";
-        Emb->getBBVector(BB).print(OS);
-      }
-      break;
-    }
-    case InstructionLevel: {
-      for (const BasicBlock &BB : F) {
-        for (const Instruction &I : BB) {
-          I.print(OS);
-          Emb->getInstVector(I).print(OS);
-        }
-      }
-      break;
-    }
-    }
-  }
-};
 
 Error processModule(Module &M, raw_ostream &OS) {
   IR2VecTool Tool(M);
@@ -283,7 +106,6 @@ Error processModule(Module &M, raw_ostream &OS) {
     (void)VocabStatus;
 
     if (!FunctionName.empty()) {
-      // Process single function
       if (const Function *F = M.getFunction(FunctionName))
         Tool.generateEmbeddings(*F, OS);
       else
@@ -291,16 +113,13 @@ Error processModule(Module &M, raw_ostream &OS) {
                                  "Function '%s' not found",
                                  FunctionName.c_str());
     } else {
-      // Process all functions
       Tool.generateEmbeddings(OS);
     }
   } else {
-    // Both triplets and entities use triplet generation
     Tool.generateTriplets(OS);
   }
   return Error::success();
 }
-} // namespace
 } // namespace ir2vec
 } // namespace llvm
 
