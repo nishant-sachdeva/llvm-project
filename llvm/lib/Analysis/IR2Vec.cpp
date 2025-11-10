@@ -26,6 +26,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 
 using namespace llvm;
 using namespace ir2vec;
@@ -39,10 +40,9 @@ namespace llvm {
 namespace ir2vec {
 cl::OptionCategory IR2VecCategory("IR2Vec Options");
 
-// FIXME: Use a default vocab when not specified
 static cl::opt<std::string>
     VocabFile("ir2vec-vocab-path", cl::Optional,
-              cl::desc("Path to the vocabulary file for IR2Vec"), cl::init(""),
+              cl::desc("Path to the vocabulary file for IR2Vec"),
               cl::cat(IR2VecCategory));
 cl::opt<float> OpcWeight("ir2vec-opc-weight", cl::Optional, cl::init(1.0),
                          cl::desc("Weight for opcode embeddings"),
@@ -61,6 +61,17 @@ cl::opt<IR2VecKind> IR2VecEmbeddingKind(
                           "Generate flow-aware embeddings")),
     cl::init(IR2VecKind::Symbolic), cl::desc("IR2Vec embedding kind"),
     cl::cat(IR2VecCategory));
+
+static std::optional<std::string> VocabOverride;
+void setIR2VecVocabPath(StringRef Path) {
+  if (Path.empty()) VocabOverride = std::nullopt;
+  else VocabOverride = Path.str();
+}
+
+StringRef getIR2VecVocabPath() {
+  return VocabOverride ? StringRef(*VocabOverride)
+                        : StringRef(VocabFile.getValue());
+}
 
 } // namespace ir2vec
 } // namespace llvm
@@ -482,12 +493,13 @@ VocabStorage Vocabulary::createDummyVocabForTest(unsigned Dim) {
 
 // FIXME: Make this optional. We can avoid file reads
 // by auto-generating a default vocabulary during the build time.
-Error IR2VecVocabAnalysis::readVocabulary(VocabMap &OpcVocab,
+Error IR2VecVocabAnalysis::readVocabulary(StringRef EffectivePath,
+                                          VocabMap &OpcVocab,
                                           VocabMap &TypeVocab,
                                           VocabMap &ArgVocab) {
-  auto BufOrError = MemoryBuffer::getFileOrSTDIN(VocabFile, /*IsText=*/true);
+  auto BufOrError = MemoryBuffer::getFileOrSTDIN(EffectivePath, /*IsText=*/true);
   if (!BufOrError)
-    return createFileError(VocabFile, BufOrError.getError());
+    return createFileError(EffectivePath.str(), BufOrError.getError());
 
   auto Content = BufOrError.get()->getBuffer();
 
@@ -615,8 +627,11 @@ IR2VecVocabAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
   if (Vocab.has_value())
     return Vocabulary(std::move(Vocab.value()));
 
+  StringRef EffectivePath =
+    VocabOverride ? StringRef(*VocabOverride) : VocabFile.getValue();
+
   // Otherwise, try to read from the vocabulary file.
-  if (VocabFile.empty()) {
+  if (EffectivePath.empty()) {
     // FIXME: Use default vocabulary
     Ctx->emitError("IR2Vec vocabulary file path not specified; You may need to "
                    "set it using --ir2vec-vocab-path");
@@ -624,7 +639,7 @@ IR2VecVocabAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
   }
 
   VocabMap OpcVocab, TypeVocab, ArgVocab;
-  if (auto Err = readVocabulary(OpcVocab, TypeVocab, ArgVocab)) {
+  if (auto Err = readVocabulary(EffectivePath, OpcVocab, TypeVocab, ArgVocab)) {
     emitError(std::move(Err), *Ctx);
     return Vocabulary();
   }
