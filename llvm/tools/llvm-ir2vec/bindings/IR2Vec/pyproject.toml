@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-ir2vec"
+version = "0.1.17"
+description = "Python bindings for LLVM IR2Vec"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.19.0",
+]
+
+[tool.setuptools]
+packages = ["py_ir2vec"]
+
+[tool.setuptools.package-data]
+py_ir2vec = ["*.so"]
