@@ -56,6 +56,16 @@ cl::opt<MIR2VecKind> MIR2VecEmbeddingKind(
     cl::init(MIR2VecKind::Symbolic), cl::desc("MIR2Vec embedding kind"),
     cl::cat(MIR2VecCategory));
 
+static std::optional<std::string> VocabOverride;
+void setMIR2VecVocabPath(std::string Path) {
+  if (Path.empty()) VocabOverride = std::nullopt;
+  else VocabOverride = Path;
+}
+
+std::string getMIR2VecVocabPath() {
+  return VocabOverride ? *VocabOverride
+                        : VocabFile.getValue();
+}
 } // namespace mir2vec
 } // namespace llvm
 
@@ -450,15 +460,16 @@ Error MIR2VecVocabProvider::readVocabulary(VocabMap &OpcodeVocab,
                                            VocabMap &CommonOperandVocab,
                                            VocabMap &PhyRegVocabMap,
                                            VocabMap &VirtRegVocabMap) {
-  if (VocabFile.empty())
+  std::string EffectiveVocabPath = getMIR2VecVocabPath();
+  if (EffectiveVocabPath.empty())
     return createStringError(
         errc::invalid_argument,
         "MIR2Vec vocabulary file path not specified; set it "
         "using --mir2vec-vocab-path");
 
-  auto BufOrError = MemoryBuffer::getFileOrSTDIN(VocabFile, /*IsText=*/true);
+  auto BufOrError = MemoryBuffer::getFileOrSTDIN(EffectiveVocabPath, /*IsText=*/true);
   if (!BufOrError)
-    return createFileError(VocabFile, BufOrError.getError());
+    return createFileError(EffectiveVocabPath, BufOrError.getError());
 
   auto Content = BufOrError.get()->getBuffer();
 
