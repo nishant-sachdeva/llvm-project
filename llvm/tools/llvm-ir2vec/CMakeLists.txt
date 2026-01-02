@@ -24,3 +24,5 @@ add_llvm_tool(llvm-ir2vec
   DEPENDS
   intrinsics_gen
   )
+
+add_subdirectory(bindings)
