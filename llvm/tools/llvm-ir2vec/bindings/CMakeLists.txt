@@ -6,6 +6,21 @@ if(NOT pybind11_FOUND)
   return()
 endif()
 
-pybind11_add_module(py_ir2vec
-  ir2vec_bindings.cpp
+pybind11_add_module(py_ir2vec MODULE 
+  ir2vec_bindings.cpp 
+  ../utils.cpp
+)
+
+target_include_directories(py_ir2vec PRIVATE 
+  ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+
+target_link_libraries(py_ir2vec PRIVATE 
+  LLVMAnalysis
+  LLVMCore
+  LLVMSupport
+  LLVMIRReader
+  LLVMAsmParser
+  LLVMPasses
+  LLVMDemangle
 )
