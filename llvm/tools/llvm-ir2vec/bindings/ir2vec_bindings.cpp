@@ -6,16 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
 #include "../utils.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/raw_ostream.h"
-
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
 #include <fstream>
 #include <memory>
@@ -43,10 +41,8 @@ std::unique_ptr<Module> getLLVMIR(const std::string &Filename,
                                   LLVMContext &Context) {
   SMDiagnostic Err;
   auto M = parseIRFile(Filename, Err, Context);
-  if (!M) {
-    Err.print(Filename.c_str(), outs());
+  if (!M)
     throw std::runtime_error("Failed to parse IR file.");
-  }
   return M;
 }
 
@@ -98,46 +94,16 @@ public:
 } // namespace
 
 PYBIND11_MODULE(py_ir2vec, m) {
-  m.doc() = R"pbdoc(
-  Python bindings for LLVM IR2Vec
+  m.doc() = "Python bindings for LLVM IR2Vec";
 
-  IR2Vec provides distributed representations for LLVM IR.
-  Example:
-    >>> import py_ir2vec as M
-    >>> tool = M.initEmbedding(
-      filename=tesy.ll,
-      mode="sym",
-      vocab_override=vocab_path
-    )
-  )pbdoc";
-
-  // Main tool class
   py::class_<PyIR2VecTool>(m, "IR2VecTool")
-      .def(py::init<std::string, std::string, std::string>(),
-           py::arg("filename"), py::arg("mode"), py::arg("vocab_override"),
-           "Initialize IR2Vec on an LLVM IR file\n"
-           "Args:\n"
-           "  filename: Path to LLVM IR file (.bc or .ll)\n"
-           "  mode: 'sym' for symbolic (default) or 'fa' for flow-aware\n"
-           "  vocab_override: Path to vocabulary file")
-      .def("generateTriplets", &PyIR2VecTool::generateTriplets,
-           "Generate triplets for vocabulary training\n"
-           "Returns: TripletResult Dict with max_relation and list of triplets")
-      .def(
-          "getEntityMappings", &PyIR2VecTool::collectEntityMappings,
-          "Get entity mappings (vocabulary)\n"
-          "Returns: list[str] - list of entity names where index is entity_id");
+      .def(py::init<std::string, std::string, std::string>())
+      .def("generateTriplets", &PyIR2VecTool::generateTriplets)
+      .def("getEntityMappings", &PyIR2VecTool::collectEntityMappings);
 
-  m.def(
-      "initEmbedding",
+  m.def("initEmbedding",
       [](std::string filename, std::string mode, std::string vocab_override) {
         return std::make_unique<PyIR2VecTool>(filename, mode, vocab_override);
       },
-      py::arg("filename"), py::arg("mode") = "sym", py::arg("vocab_override"),
-      "Initialize IR2Vec on an LLVM IR file and return an IR2VecTool\n"
-      "Args:\n"
-      "  filename: Path to LLVM IR file (.bc or .ll)\n"
-      "  mode: 'sym' for symbolic (default) or 'fa' for flow-aware\n"
-      "  vocab_override: Path to vocabulary file\n"
-      "Returns: IR2VecTool instance");
+      py::arg("filename"), py::arg("mode") = "sym", py::arg("vocab_override"));
 }
