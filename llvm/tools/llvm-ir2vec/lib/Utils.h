@@ -122,10 +122,10 @@ public:
   Expected<FuncEmbMap> getFunctionEmbeddingsMap(IR2VecKind Kind) const;
 
   /// Get embeddings for all basic blocks in a function
-  BBEmbeddingsMap getBBEmbeddings(const Function &F, IR2VecKind Kind) const;
+  Expected<BBEmbeddingsMap> getBBEmbeddings(const Function &F, IR2VecKind Kind) const;
 
   /// Get embeddings for all basic blocks in the module
-  BBEmbeddingsMap getBBEmbeddings(IR2VecKind Kind) const;
+  Expected<BBEmbeddingsMap> getBBEmbeddings(IR2VecKind Kind) const;
 
   /// Dump entity ID to string mappings
   static void writeEntitiesToStream(raw_ostream &OS);

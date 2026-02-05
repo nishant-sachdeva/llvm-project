@@ -94,6 +94,31 @@ public:
 
     return NBFuncEmbMap;
   }
+
+  nb::dict getBBEmbMap() {
+    auto ToolBBEmbMap = Tool->getBBEmbeddings(EmbKind);
+
+    if (!ToolBBEmbMap)
+      throw nb::value_error(toString(ToolBBEmbMap.takeError()).c_str());
+
+    nb::dict NbBBEmbMap;
+
+    for (const auto &[BBPtr, BBEmb] : *ToolBBEmbMap) {
+      auto BBEmbVec = BBEmb.getData();
+      double *NbBBEmbVec = new double[BBEmbVec.size()];
+      std::copy(BBEmbVec.begin(), BBEmbVec.end(), NbBBEmbVec);
+
+      auto NbArray = nb::ndarray<nb::numpy, double>(
+          NbBBEmbVec, {BBEmbVec.size()},
+          nb::capsule(NbBBEmbVec, [](void *P) noexcept {
+            delete[] static_cast<double *>(P);
+          }));
+
+      NbBBEmbMap[nb::str(BBPtr->getName().str().c_str())] = NbArray;
+    }
+
+    return NbBBEmbMap;
+  }
 };
 
 } // namespace
@@ -108,7 +133,11 @@ NB_MODULE(ir2vec, m) {
       .def("getFuncEmbMap", &PyIR2VecTool::getFuncEmbMap,
            "Generate function-level embeddings for all functions\n"
            "Returns: dict[str, ndarray[float64]] - "
-           "{function_name: embedding}");
+           "{function_name: embedding}")
+      .def("getBBEmbMap", &PyIR2VecTool::getBBEmbMap,
+           "Generate basic block embeddings for all functions\n"
+           "Returns: list[tuple[str, ndarray[float64]]] - "
+           "[{bb_name, embedding}]");
 
   m.def(
       "initEmbedding",

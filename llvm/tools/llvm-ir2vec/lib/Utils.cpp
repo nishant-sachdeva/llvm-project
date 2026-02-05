@@ -191,18 +191,24 @@ IR2VecTool::getFunctionEmbeddingsMap(IR2VecKind Kind) const {
   return Result;
 }
 
-BBEmbeddingsMap IR2VecTool::getBBEmbeddings(const Function &F,
-                                            IR2VecKind Kind) const {
-  assert(Vocab && Vocab->isValid() && "Vocabulary not initialized");
+Expected<BBEmbeddingsMap>
+IR2VecTool::getBBEmbeddings(const Function &F, IR2VecKind Kind) const {
+  if (!Vocab || !Vocab->isValid())
+    return createStringError(
+        errc::invalid_argument,
+        "Vocabulary is not valid. IR2VecTool not initialized.");
 
   BBEmbeddingsMap Result;
 
   if (F.isDeclaration())
-    return Result;
+    return createStringError(errc::invalid_argument,
+                             "Function is a declaration.");
 
   auto Emb = Embedder::create(Kind, F, *Vocab);
   if (!Emb)
-    return Result;
+    return createStringError(errc::invalid_argument,
+                             "Failed to create embedder for function '%s'.",
+                             F.getName().str().c_str());
 
   for (const BasicBlock &BB : F)
     Result.try_emplace(&BB, Emb->getBBVector(BB));
@@ -210,17 +216,20 @@ BBEmbeddingsMap IR2VecTool::getBBEmbeddings(const Function &F,
   return Result;
 }
 
-BBEmbeddingsMap IR2VecTool::getBBEmbeddings(IR2VecKind Kind) const {
-  assert(Vocab && Vocab->isValid() && "Vocabulary not initialized");
+Expected<BBEmbeddingsMap> IR2VecTool::getBBEmbeddings(IR2VecKind Kind) const {
+  if (!Vocab || !Vocab->isValid())
+    return createStringError(
+        errc::invalid_argument,
+        "Vocabulary is not valid. IR2VecTool not initialized.");
 
   BBEmbeddingsMap Result;
 
-  for (const Function &F : M) {
-    if (F.isDeclaration())
-      continue;
+  for (const Function &F : M.getFunctionDefs()) {
+    auto FuncBBVecs = getBBEmbeddings(F, Kind);
+    if (!FuncBBVecs)
+      return FuncBBVecs.takeError();
 
-    BBEmbeddingsMap FuncBBVecs = getBBEmbeddings(F, Kind);
-    Result.insert(FuncBBVecs.begin(), FuncBBVecs.end());
+    Result.insert(FuncBBVecs->begin(), FuncBBVecs->end());
   }
 
   return Result;
