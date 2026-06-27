@@ -468,8 +468,22 @@ public:
   LLVM_ABI static KnownBits ashr(const KnownBits &LHS, const KnownBits &RHS,
                                  bool ShAmtNonZero = false, bool Exact = false);
 
+  /// Compute known bits for fshl(LHS, RHS, Amt).
+  LLVM_ABI static KnownBits fshl(const KnownBits &LHS, const KnownBits &RHS,
+                                 const APInt &Amt);
+
+  /// Compute known bits for fshr(LHS, RHS, Amt).
+  LLVM_ABI static KnownBits fshr(const KnownBits &LHS, const KnownBits &RHS,
+                                 const APInt &Amt);
+
   /// Compute known bits for clmul(LHS, RHS).
   LLVM_ABI static KnownBits clmul(const KnownBits &LHS, const KnownBits &RHS);
+
+  /// Compute known bits for pext(LHS, RHS).
+  LLVM_ABI static KnownBits pext(const KnownBits &LHS, const KnownBits &RHS);
+
+  /// Compute known bits for pdep(LHS, RHS).
+  LLVM_ABI static KnownBits pdep(const KnownBits &LHS, const KnownBits &RHS);
 
   /// Determine if these known bits always give the same ICMP_EQ result.
   LLVM_ABI static std::optional<bool> eq(const KnownBits &LHS,
